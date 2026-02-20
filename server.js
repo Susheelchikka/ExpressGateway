@@ -25,26 +25,37 @@ if (!supabaseUrl || !supabaseAnonKey) {
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 /**
- * 1. Security Headers (Helmet)
- * Mirroring enterprise gateway security standards
- */
-app.use(helmet());
-
-/**
- * 2. Detailed Logging (Morgan)
- * Using 'combined' format for Apache-style logs
- */
-app.use(morgan(':method :url :status :res[content-length] - :response-time ms'));
-
-/**
- * 3. CORS Configuration
+ * 1. CORS Configuration
  * Restricting access to the gateway
  */
 app.use(cors({
     origin: '*', // In production, replace with your frontend URL
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'apikey', 'X-Client-Info', 'x-client-info', 'x-supabase-api-version']
+    allowedHeaders: [
+        'Content-Type',
+        'Authorization',
+        'apikey',
+        'X-Client-Info',
+        'x-client-info',
+        'x-supabase-api-version',
+        'x-supabase-auth-token',
+        'Prefer',
+        'Range'
+    ],
+    optionsSuccessStatus: 200
 }));
+
+/**
+ * 2. Security Headers (Helmet)
+ * Mirroring enterprise gateway security standards
+ */
+app.use(helmet());
+
+/**
+ * 3. Detailed Logging (Morgan)
+ * Using 'combined' format for Apache-style logs
+ */
+app.use(morgan(':method :url :status :res[content-length] - :response-time ms'));
 
 app.use(express.json());
 
