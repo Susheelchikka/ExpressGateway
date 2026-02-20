@@ -43,7 +43,7 @@ app.use(morgan(':method :url :status :res[content-length] - :response-time ms'))
 app.use(cors({
     origin: '*', // In production, replace with your frontend URL
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'apikey', 'X-Client-Info', 'x-client-info', 'x-supabase-api-version']
+    allowedHeaders: ['Content-Type', 'Authorization', 'apikey', 'x-client-info']
 }));
 
 app.use(express.json());
@@ -71,7 +71,7 @@ app.get('/health', (req, res) => {
  * Replicates Spring's filter logic to validate user status before proxying
  */
 const authFilter = async (req, res, next) => {
-    // Skip filter for non-authenticated paths (like auth flow)
+
     if (req.url.includes('/auth/v1/')) {
         return next();
     }
