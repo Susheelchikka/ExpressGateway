@@ -1,5 +1,5 @@
 const express = require('express');
-const { createProxyMiddleware } = require('http-proxy-middleware');
+const { createProxyMiddleware, fixRequestBody } = require('http-proxy-middleware');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const morgan = require('morgan');
@@ -57,7 +57,7 @@ app.use(helmet());
  */
 app.use(morgan(':method :url :status :res[content-length] - :response-time ms'));
 
-app.use(express.json());
+// app.use(express.json()); // Moved down to avoid consuming body before proxy
 
 /**
  * 4. Rate Limiting
@@ -131,6 +131,9 @@ app.use('/', authFilter, createProxyMiddleware({
     changeOrigin: true,
     logLevel: 'debug',
     onProxyReq: (proxyReq, req, res) => {
+        // Fix for body parsing issue (if express.json was used)
+        fixRequestBody(proxyReq, req);
+
         // Enforce apikey header if missing
         if (!req.headers['apikey']) {
             proxyReq.setHeader('apikey', supabaseAnonKey);
@@ -141,6 +144,9 @@ app.use('/', authFilter, createProxyMiddleware({
         res.setHeader('X-Powered-By', 'WSO2-style-Gateway');
     }
 }));
+
+// Apply body parser ONLY after the proxy (for local routes if any)
+app.use(express.json());
 
 /** 
  * SERVICE 1: Supabase
