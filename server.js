@@ -43,7 +43,7 @@ app.use(morgan(':method :url :status :res[content-length] - :response-time ms'))
 app.use(cors({
     origin: '*', // In production, replace with your frontend URL
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'apikey', 'x-client-info']
+    allowedHeaders: ['Content-Type', 'Authorization', 'apikey', 'X-Client-Info', 'x-client-info', 'x-supabase-api-version']
 }));
 
 app.use(express.json());
