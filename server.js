@@ -7,13 +7,11 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const { createClient } = require('@supabase/supabase-js');
 
-// Load environment variables
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Supabase configuration
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 
@@ -29,7 +27,7 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey);
  * Restricting access to the gateway
  */
 app.use(cors({
-    origin: '*', // In production, replace with your frontend URL
+    origin: 'http://localhost:5173', // In production, replace with your frontend URL
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: [
         'Content-Type',
