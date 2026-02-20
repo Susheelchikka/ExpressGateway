@@ -40,7 +40,9 @@ app.use(cors({
         'x-supabase-api-version',
         'x-supabase-auth-token',
         'Prefer',
-        'Range'
+        'Range',
+        'Content-Profile',
+        'Accept-Profile'
     ],
     optionsSuccessStatus: 200
 }));
