@@ -1,5 +1,5 @@
 const express = require('express');
-const { createProxyMiddleware, fixRequestBody } = require('http-proxy-middleware');
+const { createProxyMiddleware } = require('http-proxy-middleware');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const morgan = require('morgan');
@@ -7,11 +7,13 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const { createClient } = require('@supabase/supabase-js');
 
+// Load environment variables
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Supabase configuration
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
 
@@ -23,11 +25,23 @@ if (!supabaseUrl || !supabaseAnonKey) {
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 /**
- * 1. CORS Configuration
+ * 1. Security Headers (Helmet)
+ * Mirroring enterprise gateway security standards
+ */
+app.use(helmet());
+
+/**
+ * 2. Detailed Logging (Morgan)
+ * Using 'combined' format for Apache-style logs
+ */
+app.use(morgan(':method :url :status :res[content-length] - :response-time ms'));
+
+/**
+ * 3. CORS Configuration
  * Restricting access to the gateway
  */
 app.use(cors({
-    origin: 'http://localhost:5173', // In production, replace with your frontend URL
+    origin: '*', // In production, replace with your frontend URL
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: [
         'Content-Type',
@@ -36,37 +50,64 @@ app.use(cors({
         'X-Client-Info',
         'x-client-info',
         'x-supabase-api-version',
-        'x-supabase-auth-token',
-        'Prefer',
-        'Range',
-        'Content-Profile',
-        'Accept-Profile'
-    ],
-    optionsSuccessStatus: 200
+        'content-profile',
+        'accept-profile',
+        'Prefer'
+    ]
 }));
 
-/**
- * 2. Security Headers (Helmet)
- * Mirroring enterprise gateway security standards
+app.use(express.json());
+
+/** 
+ * JWT Decoding Utility 
+ * Extractions of app_metadata for tenant identification
  */
-app.use(helmet());
+const getTenantFromJWT = (authHeader) => {
+    try {
+        if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
+        const payloadB64 = authHeader.split('.')[1];
+        const payload = JSON.parse(Buffer.from(payloadB64, 'base64').toString());
+        // Return tenant_id from app_metadata or user_metadata, fallback to sub
+        return payload.app_metadata?.tenant_id || payload.user_metadata?.tenant_id || payload.sub;
+    } catch (e) {
+        return null;
+    }
+};
 
 /**
- * 3. Detailed Logging (Morgan)
- * Using 'combined' format for Apache-style logs
+ * 4. Redis Client Initialization
+ * For persistent and scalable rate limiting
  */
-app.use(morgan(':method :url :status :res[content-length] - :response-time ms'));
+const { createClient } = require('redis');
+const RedisStore = require('rate-limit-redis').default;
 
-// app.use(express.json()); // Moved down to avoid consuming body before proxy
+const redisClient = createClient({
+    url: process.env.REDIS_URL || 'redis://localhost:6379'
+});
+
+redisClient.on('error', (err) => console.error('[Redis] Error:', err));
+redisClient.connect().then(() => console.log('[Redis] Connected Successfully')).catch(err => {
+    console.error('[Redis] Critical Connection Failure:', err);
+});
 
 /**
- * 4. Rate Limiting
- * WSO2-style traffic management
+ * 5. Rate Limiting
+ * Tenant-aware traffic management with Redis persistence
  */
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // limit each IP to 100 requests per windowMs
-    message: { error: 'Too many requests from this IP, please try again after 15 minutes' }
+    max: 2, // limit each tenant to 100 requests per windowMs
+    store: new RedisStore({
+        sendCommand: (...args) => redisClient.sendCommand(args),
+    }),
+    keyGenerator: (req) => {
+        const tenantId = getTenantFromJWT(req.headers.authorization);
+        return tenantId || req.ip; // Group by Tenant ID, fallback to IP if unauthenticated
+    },
+    message: {
+        error: 'Too many requests for your organization',
+        retryAfter: 'Please try again after 15 minutes'
+    }
 });
 app.use(limiter);
 
@@ -131,22 +172,26 @@ app.use('/', authFilter, createProxyMiddleware({
     changeOrigin: true,
     logLevel: 'debug',
     onProxyReq: (proxyReq, req, res) => {
-        // Fix for body parsing issue (if express.json was used)
-        fixRequestBody(proxyReq, req);
-
+        console.log(`[Proxy] Forwarding ${req.method} ${req.url} to ${supabaseUrl}`);
         // Enforce apikey header if missing
         if (!req.headers['apikey']) {
             proxyReq.setHeader('apikey', supabaseAnonKey);
         }
     },
     onProxyRes: (proxyRes, req, res) => {
+        console.log(`[Proxy] Received ${proxyRes.statusCode} from ${supabaseUrl}`);
         // Add Gateway identification header
         res.setHeader('X-Powered-By', 'WSO2-style-Gateway');
+    },
+    onError: (err, req, res) => {
+        console.error('[Proxy] Error:', err);
+        res.status(504).json({
+            error: 'Gateway Timeout',
+            message: 'Target service (Supabase) is unreachable or timed out.',
+            details: err.message
+        });
     }
 }));
-
-// Apply body parser ONLY after the proxy (for local routes if any)
-app.use(express.json());
 
 /** 
  * SERVICE 1: Supabase
