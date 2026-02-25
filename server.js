@@ -96,7 +96,7 @@ redisClient.connect().then(() => console.log('[Redis] Connected Successfully')).
  */
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // limit each tenant to 100 requests per windowMs
+    max: 50, // limit each tenant to 100 requests per windowMs
     store: new RedisStore({
         sendCommand: (...args) => redisClient.sendCommand(args),
     }),
