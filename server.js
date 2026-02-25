@@ -1,5 +1,5 @@
 const express = require('express');
-const { createProxyMiddleware } = require('http-proxy-middleware');
+const { createProxyMiddleware, fixRequestBody } = require('http-proxy-middleware');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const morgan = require('morgan');
@@ -170,26 +170,36 @@ const authFilter = async (req, res, next) => {
 app.use('/', authFilter, createProxyMiddleware({
     target: supabaseUrl,
     changeOrigin: true,
-    logLevel: 'debug',
-    onProxyReq: (proxyReq, req, res) => {
-        console.log(`[Proxy] Forwarding ${req.method} ${req.url} to ${supabaseUrl}`);
-        // Enforce apikey header if missing
-        if (!req.headers['apikey']) {
-            proxyReq.setHeader('apikey', supabaseAnonKey);
+    logger: console, // Replaces logLevel in v3
+    on: {
+        proxyReq: (proxyReq, req, res) => {
+            console.log(`[Proxy] Forwarding ${req.method} ${req.url} to ${supabaseUrl}`);
+
+            // Fix for POST requests after express.json()
+            if (req.body) {
+                fixRequestBody(proxyReq, req);
+            }
+
+            // Enforce apikey header if missing
+            if (!req.headers['apikey']) {
+                proxyReq.setHeader('apikey', supabaseAnonKey);
+            }
+        },
+        proxyRes: (proxyRes, req, res) => {
+            console.log(`[Proxy] Received ${proxyRes.statusCode} from ${supabaseUrl}`);
+            // Add Gateway identification header
+            res.setHeader('X-Powered-By', 'WSO2-style-Gateway');
+        },
+        error: (err, req, res) => {
+            console.error('[Proxy] Error:', err);
+            if (!res.headersSent) {
+                res.status(504).json({
+                    error: 'Gateway Timeout',
+                    message: 'Target service (Supabase) is unreachable or timed out.',
+                    details: err.message
+                });
+            }
         }
-    },
-    onProxyRes: (proxyRes, req, res) => {
-        console.log(`[Proxy] Received ${proxyRes.statusCode} from ${supabaseUrl}`);
-        // Add Gateway identification header
-        res.setHeader('X-Powered-By', 'WSO2-style-Gateway');
-    },
-    onError: (err, req, res) => {
-        console.error('[Proxy] Error:', err);
-        res.status(504).json({
-            error: 'Gateway Timeout',
-            message: 'Target service (Supabase) is unreachable or timed out.',
-            details: err.message
-        });
     }
 }));
 
