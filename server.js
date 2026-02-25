@@ -78,10 +78,10 @@ const getTenantFromJWT = (authHeader) => {
  * 4. Redis Client Initialization
  * For persistent and scalable rate limiting
  */
-const { createClient } = require('redis');
+const { createClient: createRedisClient } = require('redis');
 const RedisStore = require('rate-limit-redis').default;
 
-const redisClient = createClient({
+const redisClient = createRedisClient({
     url: process.env.REDIS_URL || 'redis://localhost:6379'
 });
 
